@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 import sqlite3
-
+from contextlib import contextmanager
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
@@ -12,9 +12,14 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 DB_PATH = PROJECT_ROOT / "ops_test.db"
 
 
+@contextmanager
 def get_db_connection():
-    return sqlite3.connect(DB_PATH)
+    connection = sqlite3.connect(DB_PATH)
 
+    try:
+        yield connection
+    finally:
+        connection.close()
 
 def initialize_database():
     with get_db_connection() as connection:
