@@ -53,6 +53,19 @@ http://127.0.0.1:8000/dashboard
 .\.venv\Scripts\python.exe -m uvicorn app:app --reload --host 127.0.0.1 --port 8000
 ```
 
+## 使用环境变量配置
+
+默认服务名是 `ops-test-lab`，默认数据库是项目目录下的 `ops_test.db`。
+也可以在启动前临时修改配置：
+
+```powershell
+$env:OPS_TEST_SERVICE_NAME = "ops-test-lab-dev"
+$env:OPS_TEST_DB_PATH = "ops_test_dev.db"
+.\.venv\Scripts\python.exe -m uvicorn app:app --reload --host 127.0.0.1 --port 8000
+```
+
+相对路径会以项目根目录为基准。配置只对当前 PowerShell 窗口生效，关闭窗口后不会永久修改系统环境变量。
+
 ## 运行自动健康检查
 
 健康检查脚本默认检查两个接口：

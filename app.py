@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 import json
+import os
 import sqlite3
 from html import escape
 from contextlib import contextmanager
@@ -8,11 +9,15 @@ from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 
 
-app = FastAPI(title="Ops Test Lab")
-
 PROJECT_ROOT = Path(__file__).resolve().parent
-DB_PATH = PROJECT_ROOT / "ops_test.db"
+SERVICE_NAME = os.getenv("OPS_TEST_SERVICE_NAME", "ops-test-lab")
+configured_db_path = os.getenv("OPS_TEST_DB_PATH")
+DB_PATH = Path(configured_db_path) if configured_db_path else PROJECT_ROOT / "ops_test.db"
+if not DB_PATH.is_absolute():
+    DB_PATH = PROJECT_ROOT / DB_PATH
 STATUS_PATH = PROJECT_ROOT / "logs" / "monitor_status.json"
+
+app = FastAPI(title=SERVICE_NAME)
 
 
 @contextmanager
@@ -61,7 +66,7 @@ def health_check():
 
     return {
         "status": "ok",
-        "service": "ops-test-lab",
+        "service": SERVICE_NAME,
         "time": checked_at,
     }
 
