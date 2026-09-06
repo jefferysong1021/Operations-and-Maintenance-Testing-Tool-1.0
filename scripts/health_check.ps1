@@ -9,6 +9,7 @@ param(
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $logDirectory = Join-Path $projectRoot "logs"
 $logFile = Join-Path $logDirectory "health.log"
+$alertFile = Join-Path $logDirectory "alerts.log"
 
 New-Item `
     -ItemType Directory `
@@ -77,6 +78,7 @@ function Test-ServiceHealth {
 
 
 $allHealthy = $true
+$failedUris = @()
 
 foreach ($uri in $TargetUri) {
     $healthy = Test-ServiceHealth `
@@ -86,6 +88,7 @@ foreach ($uri in $TargetUri) {
 
     if (-not $healthy) {
         $allHealthy = $false
+        $failedUris += $uri
     }
 }
 
@@ -93,5 +96,23 @@ foreach ($uri in $TargetUri) {
 if ($allHealthy) {
     exit 0
 }
+
+function Write-Alert {
+    param(
+        [string]$Message,
+
+        [string]$Path
+    )
+
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $line = "$timestamp [ALERT] $Message"
+
+    Add-Content -LiteralPath $Path -Value $line
+    Write-Warning $line
+}
+
+Write-Alert `
+    -Message "Health check failed for: $($failedUris -join ', ')" `
+    -Path $alertFile
 
 exit 1
