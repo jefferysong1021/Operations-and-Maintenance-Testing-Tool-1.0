@@ -16,6 +16,15 @@
 - pytest API 自动化测试
 - GitHub 版本管理
 
+## 项目分层
+
+- `app.py`：FastAPI 路由、接口响应和监控页面
+- `database.py`：SQLite 连接、建表、检查记录写入和查询
+- `scripts/health_check.ps1`：定时健康检查和告警
+- `tests/test_api.py`：接口自动化测试
+
+接口层通过 `database.py` 使用数据库。以后切换 MySQL 时，优先替换数据访问层，尽量不修改接口层。
+
 ## 查看检查历史
 
 启动服务后访问：
