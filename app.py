@@ -146,6 +146,17 @@ def dashboard():
     monitor = read_monitor_status()
     latest = items[0] if items else None
 
+    try:
+        with get_db_connection() as connection:
+            connection.execute(text("SELECT 1"))
+        database_label = "正常"
+        database_color = "#15803d"
+        database_description = "MySQL/SQLite 连接正常"
+    except SQLAlchemyError:
+        database_label = "异常"
+        database_color = "#b91c1c"
+        database_description = "数据库连接失败"
+
     monitor_labels = {
         "healthy": "正常",
         "unhealthy": "异常",
@@ -158,9 +169,23 @@ def dashboard():
         "healthy": "#15803d",
         "unhealthy": "#b91c1c",
     }.get(monitor_status, "#6b7280")
+    monitor_descriptions = {
+        "healthy": "最近一次巡检中，所有目标都返回 HTTP 200。",
+        "unhealthy": "最近一次巡检至少有一个目标失败，请查看告警。",
+        "unknown": "还没有运行 PowerShell 巡检脚本。",
+    }
+    monitor_description = monitor_descriptions.get(monitor_status, "暂无状态说明。")
+
+    failed_targets = monitor.get("failed_targets", [])
+    if not isinstance(failed_targets, list):
+        failed_targets = []
 
     if latest:
-        latest_status = escape(str(latest["status"]))
+        latest_status = {
+            "ok": "应用正常",
+            "ready": "数据库正常",
+        }.get(str(latest["status"]), str(latest["status"]))
+        latest_status = escape(latest_status)
         latest_time = escape(str(latest["checked_at"]))
         status_color = "#15803d" if latest["status"] in {"ok", "ready"} else "#b91c1c"
     else:
@@ -170,7 +195,7 @@ def dashboard():
 
     rows = "".join(
         f"<tr><td>{escape(str(item['id']))}</td>"
-        f"<td>{escape(str(item['status']))}</td>"
+        f"<td>{escape({'ok': '应用正常', 'ready': '数据库正常'}.get(str(item['status']), str(item['status'])))}</td>"
         f"<td>{escape(str(item['checked_at']))}</td></tr>"
         for item in items
     )
@@ -210,23 +235,63 @@ def dashboard():
                 margin-bottom: 20px;
                 box-shadow: 0 2px 8px rgba(0,0,0,.08);
             }}
+            .metrics {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }}
+            .metric {{ background: white; border-radius: 12px; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }}
+            .metric-label {{ color: #6b7280; font-size: 14px; margin-bottom: 8px; }}
+            .metric-value {{ font-size: 25px; font-weight: bold; }}
+            .metric-description {{ color: #6b7280; font-size: 13px; margin-top: 8px; }}
             .status {{ color: {status_color}; font-size: 30px; font-weight: bold; }}
+            .explanation {{ color: #4b5563; line-height: 1.7; }}
+            .guide {{ background: #eff6ff; border-left: 4px solid #2563eb; padding: 12px 16px; line-height: 1.7; }}
             table {{ width: 100%; border-collapse: collapse; }}
             th, td {{ padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: left; }}
             th {{ background: #f9fafb; }}
             a {{ margin-right: 16px; color: #2563eb; }}
             .alerts {{ color: #991b1b; background: #fef2f2; padding: 16px 32px; border-radius: 8px; }}
             .alerts li {{ margin: 8px 0; }}
+            @media (max-width: 760px) {{ .metrics {{ grid-template-columns: repeat(2, 1fr); }} }}
         </style>
     </head>
     <body>
         <div class="card">
             <h1>Ops Test Lab 监控面板</h1>
+            <p class="explanation">这是一个运维巡检结果展示页：PowerShell 脚本负责检查，FastAPI 负责提供接口，数据库负责保存历史记录。</p>
             <p>页面每 30 秒自动刷新。</p>
+            <div class="guide">
+                <strong>先理解这三个概念：</strong><br>
+                当前状态 = 最近一次巡检的总结果；数据库状态 = 应用能否访问数据库；检查记录 = 每次接口检查留下的历史数据。
+            </div>
+        </div>
+        <div class="metrics">
+            <div class="metric">
+                <div class="metric-label">当前巡检状态</div>
+                <div class="metric-value" style="color: {monitor_color}">{monitor_label}</div>
+                <div class="metric-description">{escape(monitor_description)}</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">数据库状态</div>
+                <div class="metric-value" style="color: {database_color}">{database_label}</div>
+                <div class="metric-description">{escape(database_description)}</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">最近检查记录</div>
+                <div class="metric-value">{len(items)} 条</div>
+                <div class="metric-description">最多展示最近 20 条</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">最近告警数量</div>
+                <div class="metric-value" style="color: {'#b91c1c' if alerts else '#15803d'}">{len(alerts)} 条</div>
+                <div class="metric-description">来自 logs/alerts.log</div>
+            </div>
+        </div>
+        <div class="card">
+            <h2>当前巡检详情</h2>
             <p>当前巡检状态：</p>
             <div class="status" style="color: {monitor_color}">{monitor_label}</div>
             <p>最近巡检时间：{monitor_time}</p>
             <p>最近接口记录：{latest_status}（{latest_time}）</p>
+            <h3>失败目标</h3>
+            <ul><li>{"</li><li>".join(escape(str(target)) for target in failed_targets) if failed_targets else "暂无失败目标"}</li></ul>
             <a href="/health">执行健康检查</a>
             <a href="/ready">执行数据库检查</a>
             <a href="/checks">查看 JSON</a>
@@ -239,7 +304,8 @@ def dashboard():
             <ul>{alert_rows}</ul>
         </div>
         <div class="card">
-            <h2>最近 20 条检查记录</h2>
+            <h2>最近 20 条检查记录（来自数据库）</h2>
+            <p class="explanation">每次访问 /health 或 /ready，项目都会把结果写入 service_checks 表。</p>
             <table>
                 <thead><tr><th>ID</th><th>状态</th><th>检查时间</th></tr></thead>
                 <tbody>{rows}</tbody>

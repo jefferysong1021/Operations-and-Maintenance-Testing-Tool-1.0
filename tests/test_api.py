@@ -80,6 +80,9 @@ def test_dashboard_returns_html():
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
     assert "Ops Test Lab 监控面板" in response.text
+    assert "当前巡检状态" in response.text
+    assert "数据库状态" in response.text
+    assert "来自数据库" in response.text
     assert "最近 20 条检查记录" in response.text
     assert "最近告警" in response.text
 
