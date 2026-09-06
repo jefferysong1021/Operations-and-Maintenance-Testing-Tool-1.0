@@ -1,9 +1,10 @@
 from datetime import datetime, timezone
 from pathlib import Path
 import sqlite3
+from html import escape
 from contextlib import contextmanager
 from fastapi import FastAPI, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 
 app = FastAPI(title="Ops Test Lab")
@@ -90,6 +91,15 @@ def readiness_check():
 
 @app.get("/checks")
 def list_checks(limit: int = Query(default=20, ge=1, le=100)):
+    items = fetch_checks(limit)
+
+    return {
+        "count": len(items),
+        "items": items,
+    }
+
+
+def fetch_checks(limit: int) -> list[dict[str, object]]:
     with get_db_connection() as connection:
         rows = connection.execute(
             """
@@ -101,7 +111,7 @@ def list_checks(limit: int = Query(default=20, ge=1, le=100)):
             (limit,),
         ).fetchall()
 
-    items = [
+    return [
         {
             "id": row[0],
             "status": row[1],
@@ -110,7 +120,81 @@ def list_checks(limit: int = Query(default=20, ge=1, le=100)):
         for row in rows
     ]
 
-    return {
-        "count": len(items),
-        "items": items,
-    }
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard():
+    items = fetch_checks(20)
+    latest = items[0] if items else None
+
+    if latest:
+        latest_status = escape(str(latest["status"]))
+        latest_time = escape(str(latest["checked_at"]))
+        status_color = "#15803d" if latest["status"] in {"ok", "ready"} else "#b91c1c"
+    else:
+        latest_status = "暂无记录"
+        latest_time = "请先调用 /health 或 /ready"
+        status_color = "#6b7280"
+
+    rows = "".join(
+        f"<tr><td>{escape(str(item['id']))}</td>"
+        f"<td>{escape(str(item['status']))}</td>"
+        f"<td>{escape(str(item['checked_at']))}</td></tr>"
+        for item in items
+    )
+
+    if not rows:
+        rows = '<tr><td colspan="3">暂无检查记录</td></tr>'
+
+    return f"""
+    <!doctype html>
+    <html lang="zh-CN">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta http-equiv="refresh" content="30">
+        <title>Ops Test Lab Dashboard</title>
+        <style>
+            body {{
+                max-width: 960px;
+                margin: 40px auto;
+                padding: 0 20px;
+                font-family: Arial, sans-serif;
+                color: #1f2937;
+                background: #f3f4f6;
+            }}
+            .card {{
+                background: white;
+                border-radius: 12px;
+                padding: 24px;
+                margin-bottom: 20px;
+                box-shadow: 0 2px 8px rgba(0,0,0,.08);
+            }}
+            .status {{ color: {status_color}; font-size: 30px; font-weight: bold; }}
+            table {{ width: 100%; border-collapse: collapse; }}
+            th, td {{ padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: left; }}
+            th {{ background: #f9fafb; }}
+            a {{ margin-right: 16px; color: #2563eb; }}
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h1>Ops Test Lab 监控面板</h1>
+            <p>页面每 30 秒自动刷新。</p>
+            <p>最新状态：</p>
+            <div class="status">{latest_status}</div>
+            <p>检查时间：{latest_time}</p>
+            <a href="/health">执行健康检查</a>
+            <a href="/ready">执行数据库检查</a>
+            <a href="/checks">查看 JSON</a>
+            <a href="/docs">接口文档</a>
+        </div>
+        <div class="card">
+            <h2>最近 20 条检查记录</h2>
+            <table>
+                <thead><tr><th>ID</th><th>状态</th><th>检查时间</th></tr></thead>
+                <tbody>{rows}</tbody>
+            </table>
+        </div>
+    </body>
+    </html>
+    """

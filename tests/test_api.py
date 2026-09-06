@@ -48,3 +48,12 @@ def test_checks_returns_recent_history():
     assert len(data["items"]) == 2
     assert data["items"][0]["status"] == "ready"
     assert data["items"][1]["status"] == "ok"
+
+
+def test_dashboard_returns_html():
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "Ops Test Lab 监控面板" in response.text
+    assert "最近 20 条检查记录" in response.text

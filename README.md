@@ -7,6 +7,7 @@
 - FastAPI `/health` 健康检查接口
 - `/ready` SQLite 数据库就绪检查
 - `/checks` 查询最近的健康检查历史
+- `/dashboard` 查看监控面板
 - PowerShell 自动化健康检查
 - 健康检查日志
 - pytest API 自动化测试
@@ -25,6 +26,16 @@ http://127.0.0.1:8000/checks
 ```text
 http://127.0.0.1:8000/checks?limit=5
 ```
+
+## 查看监控面板
+
+启动服务后访问：
+
+```text
+http://127.0.0.1:8000/dashboard
+```
+
+页面会展示最新状态和最近 20 条检查记录，每 30 秒自动刷新。
 
 ## 启动服务
 
