@@ -5,7 +5,7 @@
 ## 功能
 
 - FastAPI `/health` 健康检查接口
-- `/ready` SQLite 数据库就绪检查
+- `/ready` 数据库就绪检查（默认 SQLite，也支持 MySQL）
 - `/checks` 查询最近的健康检查历史
 - `/alerts` 查询最近的告警记录
 - `/summary` 查询当前巡检状态摘要
@@ -19,11 +19,11 @@
 ## 项目分层
 
 - `app.py`：FastAPI 路由、接口响应和监控页面
-- `database.py`：SQLite 连接、建表、检查记录写入和查询
+- `database.py`：SQLAlchemy 数据库连接、建表、检查记录写入和查询
 - `scripts/health_check.ps1`：定时健康检查和告警
 - `tests/test_api.py`：接口自动化测试
 
-接口层通过 `database.py` 使用数据库。以后切换 MySQL 时，优先替换数据访问层，尽量不修改接口层。
+接口层通过 `database.py` 使用数据库。数据库实现通过 SQLAlchemy 统一，默认使用 SQLite，也可以通过环境变量切换到 MySQL，接口层无需改动。
 
 ## 查看检查历史
 
@@ -75,7 +75,37 @@ $env:OPS_TEST_DB_PATH = "ops_test_dev.db"
 
 相对路径会以项目根目录为基准。配置只对当前 PowerShell 窗口生效，关闭窗口后不会永久修改系统环境变量。
 
-数据库访问使用 SQLAlchemy ORM。默认仍然使用 SQLite，也可以通过 `OPS_TEST_DATABASE_URL` 指定其他数据库；切换 MySQL 时还需要安装对应的 MySQL 驱动。
+数据库访问使用 SQLAlchemy ORM。`OPS_TEST_DATABASE_URL` 优先级高于 `OPS_TEST_DB_PATH`，因此可以通过连接字符串切换数据库。
+
+### 使用本机 MySQL
+
+项目已经支持 MySQL。需要先安装依赖：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+然后在当前 PowerShell 窗口设置连接字符串：
+
+```powershell
+$env:OPS_TEST_DATABASE_URL = "mysql+pymysql://ops_app:项目密码@127.0.0.1:3306/ops_test"
+```
+
+连接字符串的结构是：
+
+```text
+mysql+pymysql://用户名:密码@主机:端口/数据库名
+```
+
+其中 `ops_app` 是项目账号，`ops_test` 是项目数据库。真实密码只能保存在本机环境变量中，不要写入代码、README 或 GitHub。
+
+在 MySQL 环境下运行测试：
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider
+```
+
+测试会自动创建 `service_checks` 表，并验证接口对数据库的读写。
 
 ## 运行自动健康检查
 
