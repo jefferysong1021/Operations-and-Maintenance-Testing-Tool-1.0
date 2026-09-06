@@ -1,5 +1,8 @@
 param(
-    [string]$TargetUri = "http://127.0.0.1:8000/health",
+    [string[]]$TargetUri = @(
+        "http://127.0.0.1:8000/health",
+        "http://127.0.0.1:8000/ready"
+    ),
     [int]$TimeoutSeconds = 5
 )
 
@@ -73,13 +76,21 @@ function Test-ServiceHealth {
 }
 
 
-$healthy = Test-ServiceHealth `
-    -Uri $TargetUri `
-    -TimeoutSeconds $TimeoutSeconds `
-    -LogFile $logFile
+$allHealthy = $true
+
+foreach ($uri in $TargetUri) {
+    $healthy = Test-ServiceHealth `
+        -Uri $uri `
+        -TimeoutSeconds $TimeoutSeconds `
+        -LogFile $logFile
+
+    if (-not $healthy) {
+        $allHealthy = $false
+    }
+}
 
 
-if ($healthy) {
+if ($allHealthy) {
     exit 0
 }
 

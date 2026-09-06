@@ -42,3 +42,19 @@ http://127.0.0.1:8000/dashboard
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn app:app --reload --host 127.0.0.1 --port 8000
 ```
+
+## 运行自动健康检查
+
+健康检查脚本默认检查两个接口：
+
+- `/health`：检查应用服务是否存活
+- `/ready`：检查数据库是否就绪
+
+运行脚本：
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File ".\scripts\health_check.ps1"
+$LASTEXITCODE
+```
+
+只有两个接口都返回 HTTP 200 时，退出码才是 `0`；任意一个检查失败，退出码就是 `1`。
