@@ -1,5 +1,9 @@
+import sqlite3
+from unittest.mock import patch
+
 from fastapi.testclient import TestClient
 
+import app as app_module
 from app import app
 
 
@@ -28,6 +32,21 @@ def test_ready_returns_database_ok():
     }
 
 
+def test_ready_returns_503_when_database_fails():
+    with patch.object(
+        app_module,
+        "get_db_connection",
+        side_effect=sqlite3.Error("simulated database failure"),
+    ):
+        response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "not_ready",
+        "database": "error",
+    }
+
+
 def test_unknown_route_returns_404():
     response = client.get("/not-found")
 
@@ -50,6 +69,11 @@ def test_checks_returns_recent_history():
     assert data["items"][1]["status"] == "ok"
 
 
+def test_checks_rejects_invalid_limit():
+    assert client.get("/checks?limit=0").status_code == 422
+    assert client.get("/checks?limit=101").status_code == 422
+
+
 def test_dashboard_returns_html():
     response = client.get("/dashboard")
 
@@ -70,6 +94,11 @@ def test_alerts_returns_json():
     assert isinstance(data["count"], int)
     assert data["count"] <= 10
     assert isinstance(data["items"], list)
+
+
+def test_alerts_rejects_invalid_limit():
+    assert client.get("/alerts?limit=0").status_code == 422
+    assert client.get("/alerts?limit=101").status_code == 422
 
 
 def test_summary_returns_current_monitor_status():
