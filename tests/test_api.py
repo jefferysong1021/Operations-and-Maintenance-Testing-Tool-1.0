@@ -70,3 +70,16 @@ def test_alerts_returns_json():
     assert isinstance(data["count"], int)
     assert data["count"] <= 10
     assert isinstance(data["items"], list)
+
+
+def test_summary_returns_current_monitor_status():
+    response = client.get("/summary")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["current_status"] in {"healthy", "unhealthy", "unknown"}
+    assert "checked_at" in data
+    assert isinstance(data["failed_targets"], list)
+    assert isinstance(data["recent_alert_count"], int)

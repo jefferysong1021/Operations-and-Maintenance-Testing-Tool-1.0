@@ -8,6 +8,7 @@
 - `/ready` SQLite 数据库就绪检查
 - `/checks` 查询最近的健康检查历史
 - `/alerts` 查询最近的告警记录
+- `/summary` 查询当前巡检状态摘要
 - `/dashboard` 查看监控面板
 - PowerShell 自动化健康检查
 - 健康检查日志
@@ -39,6 +40,12 @@ http://127.0.0.1:8000/dashboard
 
 页面会展示最新状态和最近 20 条检查记录，每 30 秒自动刷新。
 页面还会展示最近的告警记录。
+
+巡检脚本会把当前状态写入 `logs/monitor_status.json`。状态有三种：
+
+- `healthy`：最近一次巡检全部成功
+- `unhealthy`：最近一次巡检有失败
+- `unknown`：还没有执行过巡检
 
 ## 启动服务
 

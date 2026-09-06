@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from pathlib import Path
+import json
 import sqlite3
 from html import escape
 from contextlib import contextmanager
@@ -11,6 +12,7 @@ app = FastAPI(title="Ops Test Lab")
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DB_PATH = PROJECT_ROOT / "ops_test.db"
+STATUS_PATH = PROJECT_ROOT / "logs" / "monitor_status.json"
 
 
 @contextmanager
@@ -145,6 +147,31 @@ def fetch_alerts(limit: int) -> list[str]:
     return read_log_lines(alert_path, limit)
 
 
+def read_monitor_status() -> dict[str, object]:
+    default_status = {
+        "status": "unknown",
+        "checked_at": None,
+        "failed_targets": [],
+    }
+
+    if not STATUS_PATH.exists():
+        return default_status
+
+    for encoding in ("utf-8-sig", "utf-16"):
+        try:
+            data = json.loads(STATUS_PATH.read_text(encoding=encoding))
+            if isinstance(data, dict):
+                return {
+                    "status": data.get("status", "unknown"),
+                    "checked_at": data.get("checked_at"),
+                    "failed_targets": data.get("failed_targets", []),
+                }
+        except (UnicodeError, json.JSONDecodeError):
+            continue
+
+    return default_status
+
+
 @app.get("/alerts")
 def list_alerts(limit: int = Query(default=20, ge=1, le=100)):
     items = fetch_alerts(limit)
@@ -155,11 +182,37 @@ def list_alerts(limit: int = Query(default=20, ge=1, le=100)):
     }
 
 
+@app.get("/summary")
+def summary():
+    monitor = read_monitor_status()
+
+    return {
+        "current_status": monitor["status"],
+        "checked_at": monitor["checked_at"],
+        "failed_targets": monitor["failed_targets"],
+        "recent_alert_count": len(fetch_alerts(20)),
+    }
+
+
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard():
     items = fetch_checks(20)
     alerts = fetch_alerts(10)
+    monitor = read_monitor_status()
     latest = items[0] if items else None
+
+    monitor_labels = {
+        "healthy": "正常",
+        "unhealthy": "异常",
+        "unknown": "未知",
+    }
+    monitor_status = str(monitor["status"])
+    monitor_label = monitor_labels.get(monitor_status, "未知")
+    monitor_time = escape(str(monitor["checked_at"] or "暂无巡检记录"))
+    monitor_color = {
+        "healthy": "#15803d",
+        "unhealthy": "#b91c1c",
+    }.get(monitor_status, "#6b7280")
 
     if latest:
         latest_status = escape(str(latest["status"]))
@@ -225,13 +278,15 @@ def dashboard():
         <div class="card">
             <h1>Ops Test Lab 监控面板</h1>
             <p>页面每 30 秒自动刷新。</p>
-            <p>最新状态：</p>
-            <div class="status">{latest_status}</div>
-            <p>检查时间：{latest_time}</p>
+            <p>当前巡检状态：</p>
+            <div class="status" style="color: {monitor_color}">{monitor_label}</div>
+            <p>最近巡检时间：{monitor_time}</p>
+            <p>最近接口记录：{latest_status}（{latest_time}）</p>
             <a href="/health">执行健康检查</a>
             <a href="/ready">执行数据库检查</a>
             <a href="/checks">查看 JSON</a>
             <a href="/alerts">查看告警 JSON</a>
+            <a href="/summary">查看状态摘要</a>
             <a href="/docs">接口文档</a>
         </div>
         <div class="card alerts">

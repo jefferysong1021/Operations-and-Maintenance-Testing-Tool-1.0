@@ -10,6 +10,7 @@ $projectRoot = Split-Path $PSScriptRoot -Parent
 $logDirectory = Join-Path $projectRoot "logs"
 $logFile = Join-Path $logDirectory "health.log"
 $alertFile = Join-Path $logDirectory "alerts.log"
+$statusFile = Join-Path $logDirectory "monitor_status.json"
 
 New-Item `
     -ItemType Directory `
@@ -77,6 +78,25 @@ function Test-ServiceHealth {
 }
 
 
+function Write-MonitorStatus {
+    param(
+        [string]$Status,
+
+        [string[]]$FailedUris,
+
+        [string]$Path
+    )
+
+    $payload = [ordered]@{
+        status = $Status
+        checked_at = (Get-Date).ToUniversalTime().ToString("o")
+        failed_targets = @($FailedUris)
+    }
+
+    $payload | ConvertTo-Json | Set-Content -LiteralPath $Path -Encoding utf8
+}
+
+
 $allHealthy = $true
 $failedUris = @()
 
@@ -94,6 +114,11 @@ foreach ($uri in $TargetUri) {
 
 
 if ($allHealthy) {
+    Write-MonitorStatus `
+        -Status "healthy" `
+        -FailedUris @() `
+        -Path $statusFile
+
     exit 0
 }
 
@@ -114,5 +139,10 @@ function Write-Alert {
 Write-Alert `
     -Message "Health check failed for: $($failedUris -join ', ')" `
     -Path $alertFile
+
+Write-MonitorStatus `
+    -Status "unhealthy" `
+    -FailedUris $failedUris `
+    -Path $statusFile
 
 exit 1
