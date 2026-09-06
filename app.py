@@ -2,10 +2,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 import json
 import os
-import sqlite3
 from html import escape
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, JSONResponse
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from database import fetch_checks, get_db_connection, initialize_database, record_check
 
@@ -38,7 +39,7 @@ def readiness_check():
         checked_at = datetime.now(timezone.utc).isoformat()
 
         with get_db_connection() as connection:
-            connection.execute("SELECT 1")
+            connection.execute(text("SELECT 1"))
 
         record_check("ready", checked_at)
 
@@ -47,7 +48,7 @@ def readiness_check():
             "database": "ok",
         }
 
-    except sqlite3.Error:
+    except SQLAlchemyError:
         return JSONResponse(
             status_code=503,
             content={

@@ -1,7 +1,7 @@
-import sqlite3
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import SQLAlchemyError
 
 import app as app_module
 from app import app
@@ -36,7 +36,7 @@ def test_ready_returns_503_when_database_fails():
     with patch.object(
         app_module,
         "get_db_connection",
-        side_effect=sqlite3.Error("simulated database failure"),
+        side_effect=SQLAlchemyError("simulated database failure"),
     ):
         response = client.get("/ready")
 

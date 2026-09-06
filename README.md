@@ -75,6 +75,8 @@ $env:OPS_TEST_DB_PATH = "ops_test_dev.db"
 
 相对路径会以项目根目录为基准。配置只对当前 PowerShell 窗口生效，关闭窗口后不会永久修改系统环境变量。
 
+数据库访问使用 SQLAlchemy ORM。默认仍然使用 SQLite，也可以通过 `OPS_TEST_DATABASE_URL` 指定其他数据库；切换 MySQL 时还需要安装对应的 MySQL 驱动。
+
 ## 运行自动健康检查
 
 健康检查脚本默认检查两个接口：
