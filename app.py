@@ -121,9 +121,44 @@ def fetch_checks(limit: int) -> list[dict[str, object]]:
     ]
 
 
+def read_log_lines(path: Path, limit: int) -> list[str]:
+    if not path.exists():
+        return []
+
+    content = None
+    for encoding in ("utf-8", "utf-16"):
+        try:
+            content = path.read_text(encoding=encoding)
+            break
+        except UnicodeError:
+            continue
+
+    if content is None:
+        return []
+
+    lines = [line.strip() for line in content.splitlines() if line.strip()]
+    return list(reversed(lines[-limit:]))
+
+
+def fetch_alerts(limit: int) -> list[str]:
+    alert_path = PROJECT_ROOT / "logs" / "alerts.log"
+    return read_log_lines(alert_path, limit)
+
+
+@app.get("/alerts")
+def list_alerts(limit: int = Query(default=20, ge=1, le=100)):
+    items = fetch_alerts(limit)
+
+    return {
+        "count": len(items),
+        "items": items,
+    }
+
+
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard():
     items = fetch_checks(20)
+    alerts = fetch_alerts(10)
     latest = items[0] if items else None
 
     if latest:
@@ -144,6 +179,14 @@ def dashboard():
 
     if not rows:
         rows = '<tr><td colspan="3">暂无检查记录</td></tr>'
+
+    alert_rows = "".join(
+        f"<li>{escape(alert)}</li>"
+        for alert in alerts
+    )
+
+    if not alert_rows:
+        alert_rows = "<li>暂无告警</li>"
 
     return f"""
     <!doctype html>
@@ -174,6 +217,8 @@ def dashboard():
             th, td {{ padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: left; }}
             th {{ background: #f9fafb; }}
             a {{ margin-right: 16px; color: #2563eb; }}
+            .alerts {{ color: #991b1b; background: #fef2f2; padding: 16px 32px; border-radius: 8px; }}
+            .alerts li {{ margin: 8px 0; }}
         </style>
     </head>
     <body>
@@ -186,7 +231,12 @@ def dashboard():
             <a href="/health">执行健康检查</a>
             <a href="/ready">执行数据库检查</a>
             <a href="/checks">查看 JSON</a>
+            <a href="/alerts">查看告警 JSON</a>
             <a href="/docs">接口文档</a>
+        </div>
+        <div class="card alerts">
+            <h2>最近告警</h2>
+            <ul>{alert_rows}</ul>
         </div>
         <div class="card">
             <h2>最近 20 条检查记录</h2>

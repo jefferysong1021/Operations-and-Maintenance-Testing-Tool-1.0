@@ -57,3 +57,16 @@ def test_dashboard_returns_html():
     assert response.headers["content-type"].startswith("text/html")
     assert "Ops Test Lab 监控面板" in response.text
     assert "最近 20 条检查记录" in response.text
+    assert "最近告警" in response.text
+
+
+def test_alerts_returns_json():
+    response = client.get("/alerts?limit=10")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert isinstance(data["count"], int)
+    assert data["count"] <= 10
+    assert isinstance(data["items"], list)
