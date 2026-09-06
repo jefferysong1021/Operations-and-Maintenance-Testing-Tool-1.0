@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import sqlite3
 from contextlib import contextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 
 
@@ -38,20 +38,40 @@ def initialize_database():
 initialize_database()
 
 
+def record_check(status: str, checked_at: str) -> bool:
+    try:
+        with get_db_connection() as connection:
+            connection.execute(
+                "INSERT INTO service_checks (status, checked_at) VALUES (?, ?)",
+                (status, checked_at),
+            )
+            connection.commit()
+        return True
+    except sqlite3.Error:
+        return False
+
+
 @app.get("/health")
 def health_check():
+    checked_at = datetime.now(timezone.utc).isoformat()
+    record_check("ok", checked_at)
+
     return {
         "status": "ok",
         "service": "ops-test-lab",
-        "time": datetime.now(timezone.utc).isoformat(),
+        "time": checked_at,
     }
 
 
 @app.get("/ready")
 def readiness_check():
     try:
+        checked_at = datetime.now(timezone.utc).isoformat()
+
         with get_db_connection() as connection:
             connection.execute("SELECT 1")
+
+        record_check("ready", checked_at)
 
         return {
             "status": "ready",
@@ -66,3 +86,31 @@ def readiness_check():
                 "database": "error",
             },
         )
+
+
+@app.get("/checks")
+def list_checks(limit: int = Query(default=20, ge=1, le=100)):
+    with get_db_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT id, status, checked_at
+            FROM service_checks
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+
+    items = [
+        {
+            "id": row[0],
+            "status": row[1],
+            "checked_at": row[2],
+        }
+        for row in rows
+    ]
+
+    return {
+        "count": len(items),
+        "items": items,
+    }

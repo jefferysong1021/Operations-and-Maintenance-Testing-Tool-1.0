@@ -32,3 +32,19 @@ def test_unknown_route_returns_404():
     response = client.get("/not-found")
 
     assert response.status_code == 404
+
+
+def test_checks_returns_recent_history():
+    client.get("/health")
+    client.get("/ready")
+
+    response = client.get("/checks?limit=2")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["count"] == 2
+    assert len(data["items"]) == 2
+    assert data["items"][0]["status"] == "ready"
+    assert data["items"][1]["status"] == "ok"
