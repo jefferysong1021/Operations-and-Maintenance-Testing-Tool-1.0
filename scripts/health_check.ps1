@@ -12,6 +12,28 @@ $logDirectory = Join-Path $projectRoot "logs"
 $logFile = Join-Path $logDirectory "health.log"
 $alertFile = Join-Path $logDirectory "alerts.log"
 $statusFile = Join-Path $logDirectory "monitor_status.json"
+$localSettingsPath = Join-Path $projectRoot "config\local.settings.json"
+
+if (Test-Path -LiteralPath $localSettingsPath) {
+    try {
+        $localSettings = Get-Content `
+            -LiteralPath $localSettingsPath `
+            -Raw `
+            -Encoding utf8 | ConvertFrom-Json
+
+        if ([string]::IsNullOrWhiteSpace($WebhookUrl) -and $localSettings.webhook_url) {
+            $WebhookUrl = [string]$localSettings.webhook_url
+        }
+
+        if ([string]::IsNullOrWhiteSpace($WebhookProvider) -and $localSettings.webhook_provider) {
+            $WebhookProvider = [string]$localSettings.webhook_provider
+        }
+    }
+    catch {
+        throw "Unable to read local settings file: $localSettingsPath. $($_.Exception.Message)"
+    }
+}
+
 $resolvedConfigPath = if ([IO.Path]::IsPathRooted($ConfigPath)) {
     $ConfigPath
 } else {

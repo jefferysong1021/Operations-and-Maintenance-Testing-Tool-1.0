@@ -211,6 +211,10 @@ $env:OPS_TEST_WEBHOOK_PROVIDER = "feishu"
 
 环境变量只对当前 PowerShell 窗口生效。之后新开的窗口和 Windows 定时任务不会自动继承，需要单独配置运行环境。
 
+如果希望 Windows 定时任务也发送通知，可以复制 `config/local.settings.example.json` 为
+`config/local.settings.json`，再把其中的 Webhook 地址替换为真实地址。`config/local.settings.json` 已加入
+`.gitignore`，不会被提交到 GitHub。定时任务运行时会自动读取这个本地配置文件。
+
 只有两个接口都返回 HTTP 200 时，退出码才是 `0`；任意一个检查失败，退出码就是 `1`。
 
 如果检查失败，脚本还会在 `logs/alerts.log` 中写入一条 `[ALERT]` 告警记录，并在控制台显示警告。

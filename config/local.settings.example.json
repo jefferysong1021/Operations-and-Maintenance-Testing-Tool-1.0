@@ -1,0 +1,4 @@
+{
+  "webhook_provider": "feishu",
+  "webhook_url": "https://你的飞书Webhook地址"
+}

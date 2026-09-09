@@ -13,3 +13,4 @@ logs/
 
 # Local configuration
 .env
+config/local.settings.json
