@@ -1,7 +1,10 @@
 param(
     [string[]]$TargetUri,
     [int]$TimeoutSeconds = 5,
-    [string]$ConfigPath = "config\targets.json"
+    [string]$ConfigPath = "config\targets.json",
+    [string]$WebhookUrl = $env:OPS_TEST_ALERT_WEBHOOK_URL,
+    [ValidateSet("generic", "feishu")]
+    [string]$WebhookProvider = $env:OPS_TEST_WEBHOOK_PROVIDER
 )
 
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -168,10 +171,93 @@ function Write-MonitorStatus {
 }
 
 
+function Send-WebhookNotification {
+    param(
+        [string]$Url,
+
+        [ValidateSet("unhealthy", "recovered")]
+        [string]$Status,
+
+        [string[]]$FailedUris,
+
+        [string]$Message,
+
+        [ValidateSet("generic", "feishu")]
+        [string]$Provider = "generic",
+
+        [string]$LogFile
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        return
+    }
+
+    $checkedAt = (Get-Date).ToUniversalTime().ToString("o")
+
+    if ($Provider -eq "feishu") {
+        $failedTargetText = if (@($FailedUris).Count -gt 0) {
+            "`nfailed_targets: $(@($FailedUris) -join ', ')"
+        } else {
+            ""
+        }
+
+        $payload = [ordered]@{
+            msg_type = "text"
+            content = [ordered]@{
+                text = "[ops-test-lab] status=$Status`n$Message$failedTargetText`nchecked_at: $checkedAt"
+            }
+        }
+    } else {
+        $payload = [ordered]@{
+            source = "ops-test-lab"
+            status = $Status
+            message = $Message
+            failed_targets = @($FailedUris)
+            checked_at = $checkedAt
+        }
+    }
+
+    try {
+        $response = Invoke-RestMethod `
+            -Uri $Url `
+            -Method Post `
+            -ContentType "application/json" `
+            -Body ($payload | ConvertTo-Json -Depth 4) `
+            -TimeoutSec 10 `
+            -ErrorAction Stop
+
+        if ($Provider -eq "feishu" -and $null -ne $response.code -and $response.code -ne 0) {
+            throw "Feishu rejected the notification: code=$($response.code), msg=$($response.msg)"
+        }
+
+        Write-Log `
+            -Level "INFO" `
+            -Message "Webhook notification sent: $Status" `
+            -Path $LogFile
+    }
+    catch {
+        Write-Log `
+            -Level "ERROR" `
+            -Message "Webhook notification failed: $($_.Exception.Message)" `
+            -Path $LogFile
+    }
+}
+
+
 $targets = Get-TargetDefinitions `
     -OverrideUris $TargetUri `
     -Path $resolvedConfigPath `
     -DefaultTimeout $TimeoutSeconds
+
+$previousStatus = $null
+if (Test-Path -LiteralPath $statusFile) {
+    try {
+        $previousStatus = (Get-Content -LiteralPath $statusFile -Raw -Encoding utf8 | ConvertFrom-Json).status
+    }
+    catch {
+        $previousStatus = $null
+    }
+}
 
 $allHealthy = $true
 $failedUris = @()
@@ -196,6 +282,16 @@ if ($allHealthy) {
         -FailedUris @() `
         -Path $statusFile
 
+    if ($previousStatus -eq "unhealthy") {
+        Send-WebhookNotification `
+            -Url $WebhookUrl `
+            -Status "recovered" `
+            -FailedUris @() `
+            -Message "All configured health checks recovered" `
+            -Provider $WebhookProvider `
+            -LogFile $logFile
+    }
+
     exit 0
 }
 
@@ -213,9 +309,21 @@ function Write-Alert {
     Write-Warning $line
 }
 
+$alertMessage = "Health check failed for: $($failedUris -join ', ')"
+
 Write-Alert `
-    -Message "Health check failed for: $($failedUris -join ', ')" `
+    -Message $alertMessage `
     -Path $alertFile
+
+if ($previousStatus -ne "unhealthy") {
+    Send-WebhookNotification `
+        -Url $WebhookUrl `
+        -Status "unhealthy" `
+        -FailedUris $failedUris `
+        -Message $alertMessage `
+        -Provider $WebhookProvider `
+        -LogFile $logFile
+}
 
 Write-MonitorStatus `
     -Status "unhealthy" `

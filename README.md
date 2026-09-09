@@ -182,6 +182,35 @@ Start-ScheduledTask -TaskName "OpsTestLab-Monitor"
 powershell.exe -ExecutionPolicy Bypass -File ".\scripts\remove_monitor_task.ps1"
 ```
 
+## 可选告警通知
+
+默认情况下，脚本只写入 `logs/alerts.log`。如果配置 `OPS_TEST_ALERT_WEBHOOK_URL`，脚本会在状态从正常变为异常，或从异常恢复为正常时，向该地址发送 JSON 通知。
+
+当前 PowerShell 窗口临时配置示例：
+
+```powershell
+$env:OPS_TEST_ALERT_WEBHOOK_URL = "https://你的通知服务地址"
+```
+
+默认发送通用 JSON，适合 Webhook.site 等测试接收站。如果使用飞书自定义机器人，额外设置：
+
+```powershell
+$env:OPS_TEST_WEBHOOK_PROVIDER = "feishu"
+```
+
+飞书机器人接收的是文本消息。首次配置建议使用关键词 `ops-test-lab`，暂时不要选择签名校验；签名校验尚未实现。
+
+通知内容包含：
+
+- `status`：`unhealthy` 或 `recovered`
+- `message`：告警说明
+- `failed_targets`：失败目标列表
+- `checked_at`：UTC 检查时间
+
+通知地址只应保存在本机环境变量中，不要写入代码、README 或 GitHub。没有配置通知地址时，原有日志、退出码和网页功能不受影响。
+
+环境变量只对当前 PowerShell 窗口生效。之后新开的窗口和 Windows 定时任务不会自动继承，需要单独配置运行环境。
+
 只有两个接口都返回 HTTP 200 时，退出码才是 `0`；任意一个检查失败，退出码就是 `1`。
 
 如果检查失败，脚本还会在 `logs/alerts.log` 中写入一条 `[ALERT]` 告警记录，并在控制台显示警告。
