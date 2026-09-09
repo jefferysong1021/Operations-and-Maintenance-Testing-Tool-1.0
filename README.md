@@ -21,6 +21,9 @@
 - `app.py`：FastAPI 路由、接口响应和监控页面
 - `database.py`：SQLAlchemy 数据库连接、建表、检查记录写入和查询
 - `scripts/health_check.ps1`：定时健康检查和告警
+- `scripts/register_monitor_task.ps1`：注册 Windows 定时巡检任务
+- `scripts/remove_monitor_task.ps1`：删除 Windows 定时巡检任务
+- `config/targets.json`：被监控目标及超时时间配置
 - `tests/test_api.py`：接口自动化测试
 
 接口层通过 `database.py` 使用数据库。数据库实现通过 SQLAlchemy 统一，默认使用 SQLite，也可以通过环境变量切换到 MySQL，接口层无需改动。
@@ -109,16 +112,74 @@ mysql+pymysql://用户名:密码@主机:端口/数据库名
 
 ## 运行自动健康检查
 
-健康检查脚本默认检查两个接口：
+健康检查脚本默认读取 `config/targets.json`，逐个检查配置中的目标：
 
 - `/health`：检查应用服务是否存活
 - `/ready`：检查数据库是否就绪
+
+新增监控目标时，只需要编辑 `config/targets.json`，不需要修改 PowerShell 脚本：
+
+```json
+{
+  "targets": [
+    {
+      "name": "外部网站示例",
+      "url": "https://example.com",
+      "timeout_seconds": 5
+    }
+  ]
+}
+```
+
+`name` 用于日志和页面识别目标，`url` 是实际检查地址，`timeout_seconds` 是单个目标的超时时间。
 
 运行脚本：
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File ".\scripts\health_check.ps1"
 $LASTEXITCODE
+```
+
+命令行也可以临时覆盖配置文件，用于故障演示或单独检查：
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File ".\scripts\health_check.ps1" `
+  -TargetUri "http://127.0.0.1:8000/not-found"
+```
+
+## 注册 Windows 定时任务
+
+注册一个每 5 分钟运行一次的任务：
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File ".\scripts\register_monitor_task.ps1"
+```
+
+如果出现“拒绝访问”，请使用“以管理员身份运行”的 Windows PowerShell 再执行注册命令。任务使用当前 Windows 用户、有限权限运行，不需要保存 MySQL 密码。
+
+也可以指定检查间隔，例如每 10 分钟运行一次：
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File ".\scripts\register_monitor_task.ps1" -IntervalMinutes 10
+```
+
+查看任务状态：
+
+```powershell
+Get-ScheduledTask -TaskName "OpsTestLab-Monitor"
+Get-ScheduledTaskInfo -TaskName "OpsTestLab-Monitor"
+```
+
+手动触发一次任务：
+
+```powershell
+Start-ScheduledTask -TaskName "OpsTestLab-Monitor"
+```
+
+不再需要时删除任务：
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File ".\scripts\remove_monitor_task.ps1"
 ```
 
 只有两个接口都返回 HTTP 200 时，退出码才是 `0`；任意一个检查失败，退出码就是 `1`。

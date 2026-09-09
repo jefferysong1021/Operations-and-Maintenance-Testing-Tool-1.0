@@ -1,9 +1,7 @@
 param(
-    [string[]]$TargetUri = @(
-        "http://127.0.0.1:8000/health",
-        "http://127.0.0.1:8000/ready"
-    ),
-    [int]$TimeoutSeconds = 5
+    [string[]]$TargetUri,
+    [int]$TimeoutSeconds = 5,
+    [string]$ConfigPath = "config\targets.json"
 )
 
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -11,6 +9,11 @@ $logDirectory = Join-Path $projectRoot "logs"
 $logFile = Join-Path $logDirectory "health.log"
 $alertFile = Join-Path $logDirectory "alerts.log"
 $statusFile = Join-Path $logDirectory "monitor_status.json"
+$resolvedConfigPath = if ([IO.Path]::IsPathRooted($ConfigPath)) {
+    $ConfigPath
+} else {
+    Join-Path $projectRoot $ConfigPath
+}
 
 New-Item `
     -ItemType Directory `
@@ -38,6 +41,8 @@ function Write-Log {
 
 function Test-ServiceHealth {
     param(
+        [string]$Name,
+
         [string]$Uri,
 
         [int]$TimeoutSeconds = 5,
@@ -54,7 +59,7 @@ function Test-ServiceHealth {
         if ($response.StatusCode -eq 200) {
             Write-Log `
                 -Level "INFO" `
-                -Message "Service check passed: $Uri" `
+                -Message "Service check passed: $Name ($Uri)" `
                 -Path $LogFile
 
             return $true
@@ -62,7 +67,7 @@ function Test-ServiceHealth {
 
         Write-Log `
             -Level "ERROR" `
-            -Message "Unexpected status code: $($response.StatusCode)" `
+            -Message "Unexpected status code for $Name ($Uri): $($response.StatusCode)" `
             -Path $LogFile
 
         return $false
@@ -70,11 +75,77 @@ function Test-ServiceHealth {
     catch {
         Write-Log `
             -Level "ERROR" `
-            -Message "Cannot reach service: $($_.Exception.Message)" `
+            -Message "Cannot reach $Name ($Uri): $($_.Exception.Message)" `
             -Path $LogFile
 
         return $false
     }
+}
+
+
+function Get-TargetDefinitions {
+    param(
+        [string[]]$OverrideUris,
+
+        [string]$Path,
+
+        [int]$DefaultTimeout
+    )
+
+    if ($OverrideUris -and $OverrideUris.Count -gt 0) {
+        return @(
+            $OverrideUris | ForEach-Object {
+                [pscustomobject]@{
+                    name = $_
+                    uri = $_
+                    timeout_seconds = $DefaultTimeout
+                }
+            }
+        )
+    }
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        throw "Target configuration file not found: $Path"
+    }
+
+    try {
+        $config = Get-Content -LiteralPath $Path -Raw -Encoding utf8 | ConvertFrom-Json
+    }
+    catch {
+        throw "Unable to parse target configuration file: $Path. $($_.Exception.Message)"
+    }
+
+    if (-not $config.targets) {
+        throw "Target configuration must contain a non-empty targets array: $Path"
+    }
+
+    $targets = @(
+        $config.targets | ForEach-Object {
+            if ([string]::IsNullOrWhiteSpace($_.url)) {
+                throw "Each target must contain a url: $Path"
+            }
+
+            $targetName = if ([string]::IsNullOrWhiteSpace($_.name)) {
+                $_.url
+            } else {
+                $_.name
+            }
+
+            $targetTimeout = if ($_.timeout_seconds) {
+                [int]$_.timeout_seconds
+            } else {
+                $DefaultTimeout
+            }
+
+            [pscustomobject]@{
+                name = $targetName
+                uri = $_.url
+                timeout_seconds = $targetTimeout
+            }
+        }
+    )
+
+    return $targets
 }
 
 
@@ -97,18 +168,24 @@ function Write-MonitorStatus {
 }
 
 
+$targets = Get-TargetDefinitions `
+    -OverrideUris $TargetUri `
+    -Path $resolvedConfigPath `
+    -DefaultTimeout $TimeoutSeconds
+
 $allHealthy = $true
 $failedUris = @()
 
-foreach ($uri in $TargetUri) {
+foreach ($target in $targets) {
     $healthy = Test-ServiceHealth `
-        -Uri $uri `
-        -TimeoutSeconds $TimeoutSeconds `
+        -Name $target.name `
+        -Uri $target.uri `
+        -TimeoutSeconds $target.timeout_seconds `
         -LogFile $logFile
 
     if (-not $healthy) {
         $allHealthy = $false
-        $failedUris += $uri
+        $failedUris += $target.uri
     }
 }
 
